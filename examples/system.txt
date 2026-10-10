@@ -1,0 +1,2 @@
+host1,<IP1>
+host2,<IP2>

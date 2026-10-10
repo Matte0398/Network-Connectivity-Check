@@ -1,0 +1,10 @@
+2026-10-01 15:10:00 [INFO] [PC-ADMIN01] Run started. Systems: C:\temp\system.txt; results: C:\Tools\TestPort\CSV\results_connection-2026-10-01_15-10-00-456.csv
+2026-10-01 15:10:00 [INFO] [host1 (<IP1>)] Starting remote system checks.
+2026-10-01 15:10:18 [INFO] [host1 (<IP1>)] Remote system checks completed.
+2026-10-01 15:10:19 [INFO] [host2 (<IP2>)] Starting remote system checks.
+2026-10-01 15:10:24 [WARN] [host2 (<IP2>)] UDP capture port 161: tcpdump did not start. sudo: a password is required
+2026-10-01 15:10:26 [WARN] [host2 (<IP2>)] UDP capture port 514: tcpdump did not start. sudo: a password is required
+2026-10-01 15:10:28 [WARN] [host2 (<IP2>)] UDP capture port 5000: tcpdump did not start. sudo: a password is required
+2026-10-01 15:10:30 [WARN] [host2 (<IP2>)] UDP capture port 9999: tcpdump did not start. sudo: a password is required
+2026-10-01 15:10:30 [INFO] [host2 (<IP2>)] Remote system checks completed.
+2026-10-01 15:10:30 [INFO] [PC-ADMIN01] Run completed.

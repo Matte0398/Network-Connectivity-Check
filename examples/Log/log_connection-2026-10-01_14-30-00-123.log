@@ -1,0 +1,10 @@
+2026-10-01 14:30:00 [INFO] [PC-ADMIN01] Run started. Systems: C:\temp\system.txt; results: C:\Tools\TestPort\CSV\results_connection-2026-10-01_14-30-00-123.csv
+2026-10-01 14:30:00 [INFO] [host1 (<IP1>)] Starting remote system checks.
+2026-10-01 14:30:19 [INFO] [host1 (<IP1>)] Remote OS: Linux.
+2026-10-01 14:30:21 [INFO] [host1 (<IP1>)] Remote system checks completed.
+2026-10-01 14:30:22 [INFO] [host2 (<IP2>)] Starting remote system checks.
+2026-10-01 14:30:26 [WARN] [host2 (<IP2>)] TCP probe to <IP2>:80: TCP connection timed out after 1000 ms.
+2026-10-01 14:30:38 [INFO] [host2 (<IP2>)] Remote OS: Linux.
+2026-10-01 14:30:40 [WARN] [host2 (<IP2>)] Reverse TCP port 8080: netcat exit 1; nc: connect to <IP-PC-ADMIN01> port 8080 (tcp) failed: Connection refused
+2026-10-01 14:30:40 [INFO] [host2 (<IP2>)] Remote system checks completed.
+2026-10-01 14:30:40 [INFO] [PC-ADMIN01] Run completed.
