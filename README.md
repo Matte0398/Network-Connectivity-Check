@@ -1,44 +1,32 @@
-﻿# Network Connectivity Check
+# Network Connectivity Check
 
-A program that checks whether **TCP and UDP** ports are reachable from a Windows machine to one or more remote systems (Windows or Linux). It can also run the reverse test (from the remote system back to the local machine).
+[Test-NetworkConnectivity.ps1](Test-NetworkConnectivity.ps1) tests TCP or UDP connectivity from a Windows computer to systems listed in an input file. It can also run reverse tests from Windows/Linux targets and verify UDP arrival using a capture on Linux. Results are saved to CSV, with diagnostics in a separate log.
 
-Results are saved in a **CSV** file and technical details in a **log** file.
+## Contents
 
----
+- [Repository structure](#repository-structure)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+- [Parameters](#parameters)
+- [Credentials](#credentials)
+- [Test behavior and results](#test-behavior-and-results)
+- [Reports and logs](#reports-and-logs)
+- [Limitations and troubleshooting](#limitations-and-troubleshooting)
+- [Example files](#example-files)
+- [License](#license)
 
-## Table of contents
+## Repository structure
 
-1. [What it does](#what-it-does)
-2. [Requirements](#requirements)
-3. [Quick start](#quick-start)
-4. [Project structure](#project-structure)
-5. [Parameters](#parameters)
-6. [Files used and generated](#files-used-and-generated)
-7. [How the tests work](#how-the-tests-work)
-8. [Console output](#console-output)
-9. [CSV content](#csv-content)
-10. [Status and Details values](#status-and-details-values)
-11. [Log format](#log-format)
-12. [Credentials](#credentials)
-13. [Known limitations](#known-limitations)
-14. [Usage reference](#usage-reference)
-15. [Usage examples](#usage-examples)
-16. [Example files](#example-files)
-17. [License](#license)
-
----
-
-## What it does
-
-For every system listed in `system.txt`, the script runs, in order:
-
-1. **Ping** (informational only: port tests continue even if the ping fails).
-2. **Local-to-remote test** on the ports given with `-L`.
-3. **Remote-to-local test** on the ports given with `-R` (optional).
-
-Instead of step 2, `-UdpArrivalCheck` runs a **`tcpdump` capture** on the Linux destination to check whether the UDP probe actually arrived.
-
----
+```text
+Network-Connectivity-Check/
+|-- examples/
+|   |-- CSV/
+|   |-- Log/
+|   `-- system.txt
+|-- LICENSE
+|-- README.md
+`-- Test-NetworkConnectivity.ps1
+```
 
 ## Requirements
 
@@ -56,48 +44,34 @@ Install the SSH module when needed:
 Install-Module -Name Posh-SSH
 ```
 
----
-
 ## Quick start
 
-**1. Create the system list** (default `C:\temp\system.txt`), one `hostname,ip` per line:
+Create `C:\temp\system.txt`, or select another input file with `-SystemListPath`. Use one `hostname,ip` entry per line:
 
 ```text
-host1,<IP1>
-host2,<IP2>
+<HOSTNAME_1>,<IP_ADDRESS_1>
+<HOSTNAME_2>,<IP_ADDRESS_2>
 ```
 
-Tests always use the **IP**; the hostname is only used to label the results.
+Replace the placeholders before running. The IP is used for connections; the hostname labels the results. Blank lines are ignored. Invalid entries are skipped with a warning; comment lines are not specially supported.
 
-**2. Run the script:**
+Run from the project directory:
 
 ```powershell
+# TCP to the listed systems
 .\Test-NetworkConnectivity.ps1 -T TCP -L 80,443
+
+# TCP in both directions, with Windows targets
+.\Test-NetworkConnectivity.ps1 -T TCP -L 5985 -R 8080 -RemoteOS Windows
+
+# UDP arrival capture on Linux, using passwordless sudo
+.\Test-NetworkConnectivity.ps1 -T UDP -L 161,514 -UdpArrivalCheck -CaptureSudo -Credential (Get-Credential)
+
+# Custom system list
+.\Test-NetworkConnectivity.ps1 -T TCP -L 443 -SystemListPath 'D:\Lists\systems.txt'
 ```
 
-**3. Read the results** in the CSV and log files shown at the end of the run.
-
-Running the script **without** `-T` and `-L` prints the help text, including the file paths.
-
----
-
-## Project structure
-
-```text
-Infrastructure-Connectivity-Check/
-├── Test-NetworkConnectivity.ps1
-├── README.md
-└── examples/
-    ├── system.txt
-    ├── CSV/
-    │   ├── results_connection-2026-10-01_14-30-00-123.csv
-    │   └── results_connection-2026-10-01_15-10-00-456.csv
-    └── Log/
-        ├── log_connection-2026-10-01_14-30-00-123.log
-        └── log_connection-2026-10-01_15-10-00-456.log
-```
-
----
+Running without `-T` or without `-L` displays the built-in usage. Read the generated CSV for individual outcomes; the console reports progress and prints report paths at completion.
 
 ## Parameters
 
@@ -118,176 +92,10 @@ Infrastructure-Connectivity-Check/
 
 Ports can be written as `80,443` or `'80,443'`. Invalid ports (not a number, or outside 1-65535) are ignored with a warning.
 
-**Parameter rules** (otherwise the script stops with an error):
+**Parameter rules** (otherwise the program stops with an error):
 
 - `-UdpArrivalCheck` requires `-T UDP` and supports `-L` only (not `-R`).
 - `-CaptureSudo` requires `-UdpArrivalCheck`.
-
----
-
-## Files used and generated
-
-| File                                 | Location                                 | Content                                             |
-| ------------------------------------ | ---------------------------------------- | --------------------------------------------------- |
-| `system.txt`                         | `<WorkDirectory>` (or `-SystemListPath`) | Systems to test, one `hostname,ip` per line (input) |
-| `file_cred_<ip>.cred`                | `<WorkDirectory>`                        | Credential saved with `-SaveCredential`             |
-| `results_connection-<timestamp>.csv` | `CSV` folder next to the script          | Test results                                        |
-| `log_connection-<timestamp>.log`     | `Log` folder next to the script          | Diagnostic log                                      |
-
-The `Log`, `CSV` and `<WorkDirectory>` folders are created automatically. The CSV is created only when the first result is recorded.
-
----
-
-## How the tests work
-
-### TCP
-
-The program tries to open a connection to the port within `-Timeout`. If the connection opens the port is **Open**; otherwise it is **Failed** (refused, timed out or unreachable).
-
-### UDP
-
-UDP has no handshake, so the program sends a packet and waits for a reply within `-Timeout`.
-
-- Reply received: **Open**.
-- No reply: **Inconclusive**. This does not mean the port is closed: many services (for example 3389 or 161/SNMP) only answer valid requests.
-
-### UDP with capture (`-UdpArrivalCheck`)
-
-1. The program connects to the Linux destination over SSH and starts `tcpdump` (filter `udp port N or icmp`).
-2. After 2 seconds it sends a UDP probe carrying a unique marker text.
-3. When the capture ends it looks in the `tcpdump` output for the probe marker, an ICMP _port unreachable_ and a UDP reply.
-
-Time per port: about 2 seconds of startup plus `-Timeout` rounded up to whole seconds.
-
-### Reverse test (`-R`)
-
-- **Windows**: the test function is run on the remote system through WinRM (`Invoke-Command`) and tries to reach the local IP.
-- **Linux**: over SSH the program runs `nc -zv` (TCP) or `nc -zuv` (UDP) towards the local IP.
-- For UDP the result on Linux is always **Inconclusive**, because netcat cannot confirm that a UDP port is open.
-
-### OS detection (`-RemoteOS`)
-
-The program tries WinRM first (if a session opens, the system is `Windows`), then SSH with `uname -s` (if it answers `Linux`, the system is `Linux`). Otherwise the result is `Unrecognized` and reverse tests are skipped.
-
-There is a 1-second pause between ports.
-
----
-
-## Console output
-
-| Message                                                            | Colour  | When                           |
-| ------------------------------------------------------------------ | ------- | ------------------------------ |
-| `Testing the remote system: <host> (<ip>) ...`                     | green   | Start of a system              |
-| `  Ping KO`                                                        | red     | The ping got no reply          |
-| `  Testing <TCP/UDP>/<port> on <host> (<ip>) ...`                  | default | Local-to-remote test           |
-| `  Testing <TCP/UDP>/<port> on local system (<host> - <ip>) ...`   | default | Remote-to-local test           |
-| `  Remote OS: <Windows/Linux/Unrecognized>`                        | default | After OS detection             |
-| `Invalid port '<x>' in -L; ignored.`                               | red     | Invalid port in `-L` or `-R`   |
-| `No valid ports to test.`                                          | red     | No valid port in `-L`          |
-| `Create the system list first: <path> (one hostname,ip per line).` | red     | `system.txt` not found         |
-| `Invalid system entry: '<line>'. Expected hostname,ip`             | warning | Malformed line in `system.txt` |
-| `Results: <CSV path>`                                              | yellow  | End of run, CSV created        |
-| `No results generated; CSV not created.`                           | yellow  | End of run, no results         |
-| `Diagnostic log: <log path>`                                       | yellow  | End of run                     |
-
-In UDP tests (without capture) the status of each port is **not** printed to the console: read it in the CSV.
-
-With `-UdpArrivalCheck` each port prints one line in the format `  <Status> - UDP/<port> - <host> (<ip>) - <Details>`:
-
-| Status                 | Colour     |
-| ---------------------- | ---------- |
-| `ReplyObserved`        | dark green |
-| `ArrivalOnly`          | cyan       |
-| `NotObserved`          | yellow     |
-| `PortRefused`, `Error` | red        |
-
-If the capture setup fails, each port prints: `  Error - UDP/<port> - capture setup failed on <host> (<ip>)`.
-
----
-
-## CSV content
-
-Semicolon-separated, UTF-8 encoded. One row per test.
-
-| Column                                 | Description                                                     |
-| -------------------------------------- | --------------------------------------------------------------- |
-| `Timestamp`                            | Date and time of the result                                     |
-| `Direction`                            | `LocalToRemote` or `RemoteToLocal`                              |
-| `SourceHostname`, `SourceIP`           | Origin of the test (in reverse tests this is the remote system) |
-| `DestinationHostname`, `DestinationIP` | Target of the test (in reverse tests this is the local PC)      |
-| `Test`                                 | `Port` or `Ping`                                                |
-| `Protocol`                             | `TCP`, `UDP` or `ICMP` (for ping)                               |
-| `Port`                                 | Port number (empty for ping)                                    |
-| `Status`                               | Outcome, see the tables below                                   |
-| `Details`                              | Explanation of the outcome                                      |
-
----
-
-## Status and Details values
-
-### Ping
-
-| Status      | Details                                                           |
-| ----------- | ----------------------------------------------------------------- |
-| `Reachable` | `ICMP reply received.`                                            |
-| `NoReply`   | `No ICMP reply; port tests continue because ICMP may be blocked.` |
-
-### Normal TCP and UDP tests (both directions)
-
-| Protocol | Status         | Details                                                               |
-| -------- | -------------- | --------------------------------------------------------------------- |
-| TCP      | `Open`         | `TCP connection established.`                                         |
-| TCP      | `Failed`       | `TCP connection not established (refused, timed out or unreachable).` |
-| UDP      | `Open`         | `UDP reply received.`                                                 |
-| UDP      | `Inconclusive` | `No UDP reply received.`                                              |
-
-### UDP capture (`-UdpArrivalCheck`)
-
-| Status          | Meaning                                                                                              | Details                                                                                                                                                    |
-| --------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ReplyObserved` | The probe arrived and the target sent a UDP reply. This does not prove the reply made it back to you | `Probe arrived; UDP reply seen leaving the target. Delivery back here is not verified.`                                                                    |
-| `PortRefused`   | The probe arrived and the target sent ICMP _Port Unreachable_ (no listener, or a firewall rejection) | `Probe arrived; target sent ICMP Port Unreachable (no listener or firewall rejection).`                                                                    |
-| `ArrivalOnly`   | The probe arrived, but neither a reply nor a refusal was seen: port state undetermined               | `Probe arrived; no reply or refusal seen. Port state is undetermined.`                                                                                     |
-| `NotObserved`   | The probe was not seen on the target before the capture ended                                        | `Probe not seen on the target before the capture ended.`                                                                                                   |
-| `Error`         | The capture did not work (see the log)                                                               | `tcpdump did not start; see diagnostic log.` / `UDP arrival capture failed; see diagnostic log.` / `UDP arrival capture setup failed; see diagnostic log.` |
-
-UDP arrival alone does **not** prove that a port is open, and the lack of a reply can be perfectly normal.
-
-### Reverse test (`-R`)
-
-| Remote system | Status                             | Details                                                      |
-| ------------- | ---------------------------------- | ------------------------------------------------------------ |
-| Windows       | `Open` / `Failed` / `Inconclusive` | Same texts as the normal TCP/UDP tests                       |
-| Linux, TCP    | `Open`                             | `TCP connection established by netcat.`                      |
-| Linux, TCP    | `Failed`                           | `TCP connection not confirmed; netcat exit status <N>.`      |
-| Linux, UDP    | `Inconclusive`                     | `UDP netcat exit status <N>; does not confirm an open port.` |
-| Linux         | `Error`                            | `Remote command nc (netcat) is missing.`                     |
-| Any           | `Error`                            | `Remote execution failed; see diagnostic log.`               |
-
-### Skipped reverse tests (`Skipped`)
-
-| Details (reason)                                 |
-| ------------------------------------------------ |
-| `Remote OS could not be identified.`             |
-| `Posh-SSH module unavailable.`                   |
-| `Unable to determine the local route address.`   |
-| `Reverse test setup failed; see diagnostic log.` |
-
----
-
-## Log format
-
-Every line looks like this:
-
-```text
-2026-10-01 14:30:12 [LEVEL] [host (ip)] message
-```
-
-- `LEVEL` is `INFO`, `WARN` or `ERROR`.
-- The second field is the system being tested (or the local PC name when none is selected).
-- The log holds details that the CSV only hints at: socket error messages, `tcpdump` output when it fails to start, WinRM/SSH errors, netcat exit codes, rejected lines of `system.txt`, invalid ports.
-
----
 
 ## Credentials
 
@@ -301,90 +109,85 @@ Normal local-to-remote tests do **not** need credentials. They are needed for re
 
 `.cred` files are protected by Windows: only the same user on the same computer can decrypt them. Use `-SaveCredential` on every run to reuse them.
 
----
+## Test behavior and results
 
-## Known limitations
+For each system, the program performs an informational ping, local-to-remote port tests (`-L`), then optional reverse tests (`-R`). A failed ping does not stop port tests. Systems and ports are processed sequentially, with a one-second pause between port tests.
 
-- **UDP capture works only on Linux with IPv4.** With a Windows (or IPv6) target the program returns `Error` for every port.
-- With UDP, "no reply" is `Inconclusive`, not "port closed".
-- The reverse UDP test towards Linux is always `Inconclusive`.
-- The capture filter does not restrict the source IP (so it also works behind NAT): ICMP refusals or replies on that port could in theory come from other traffic.
-- If `tcpdump` takes more than 2 seconds to start, the probe is sent too early and the result is `NotObserved`. The pause can be increased in `Invoke-UdpArrivalCapture`.
-- The reverse test on Windows needs WinRM and an account with the required rights.
+### Standard tests
 
----
+TCP attempts a connection within `-Timeout`. UDP sends a probe and waits for a reply; a service may ignore a probe that is not a valid protocol request.
 
-## Usage reference
+| Test | Status         | Meaning                                                        |
+| ---- | -------------- | -------------------------------------------------------------- |
+| Ping | `Reachable`    | ICMP reply received.                                           |
+| Ping | `NoReply`      | No ICMP reply; ICMP may be blocked.                            |
+| TCP  | `Open`         | Connection established.                                        |
+| TCP  | `Failed`       | Connection not established: refused, timed out or unreachable. |
+| UDP  | `Open`         | Reply received.                                                |
+| UDP  | `Inconclusive` | No reply; this does not establish that the port is closed.     |
 
-```
-INFRASTRUCTURE CONNECTIVITY CHECK
+### Reverse tests
 
-Usage:
-  .\Test-NetworkConnectivity.ps1 -T <TCP|UDP> -L <ports> [options]
+Windows targets execute the probe through WinRM. Linux targets execute `nc -zv` for TCP or `nc -zuv` for UDP through SSH. Linux UDP results are always `Inconclusive`, since netcat's exit status does not confirm an open UDP port.
 
-Ports:
-  -T <TCP|UDP>            Protocol to test.
-  -L <ports>              Local-to-remote ports (required), e.g. 80,443
-  -R <ports>              Remote-to-local ports (optional).
+With `-RemoteOS Auto`, detection tries WinRM first, then SSH with `uname -s`. Reverse tests use the local route address selected for the destination.
 
-Options:
-  -SystemListPath <path>  File with one "hostname,ip" per line.
-                          Default: <WorkDirectory>\system.txt
-  -WorkDirectory <path>   Folder for system.txt and saved credentials. Default: C:\temp
-  -RemoteOS <OS>          Auto, Windows or Linux. Default: Auto
-  -Timeout <ms>           100 to 60000. Default: 1000
-  -Credential <value>     One credential for all systems, e.g. (Get-Credential)
-  -SaveCredential         Save and reuse one credential file per system.
-  -TrustSshHostKey        Accept unknown SSH host keys (trusted hosts only).
+`Skipped` means the reverse test could not be set up, for example because the OS was unrecognized, Posh-SSH was unavailable, or the local route address could not be determined. `Error` indicates a test execution failure, such as a missing `nc` command. Check `Details` and the diagnostic log for the cause.
 
-UDP capture (needs Posh-SSH here, and tcpdump + timeout on the Linux target):
-  -UdpArrivalCheck        Run tcpdump on the target to see if the UDP probe arrives.
-                          Works with -T UDP and -L only.
-  -CaptureSudo            Run tcpdump with "sudo -n" (no password prompt).
+### UDP arrival capture
 
-UDP capture results:
-  ReplyObserved           The target sent a UDP reply back.
-  PortRefused             The target sent ICMP "port unreachable".
-  ArrivalOnly             The probe arrived, but the port state is unknown.
-  NotObserved             The probe was not seen on the target.
-  Error                   Capture failed; see the diagnostic log.
+`-UdpArrivalCheck` uses SSH to start `tcpdump` on the Linux destination, waits two seconds, then sends a UDP probe with a unique marker. Capture duration includes this startup interval and `-Timeout` rounded up to whole seconds. The capture filter is `udp port N or icmp`.
 
-Examples:
-  .\Test-NetworkConnectivity.ps1 -T TCP -L 80,443
-  .\Test-NetworkConnectivity.ps1 -T TCP -L 5985 -R 8080 -RemoteOS Windows
-  .\Test-NetworkConnectivity.ps1 -T UDP -L 161,514 -UdpArrivalCheck
+| Status          | Meaning                                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------- |
+| `ReplyObserved` | Probe arrived and a UDP reply was seen leaving the target; delivery back to the source is not verified.  |
+| `PortRefused`   | Probe arrived and an ICMP Port Unreachable was observed, indicating no listener or a firewall rejection. |
+| `ArrivalOnly`   | Probe arrived without an observed reply or refusal; port state remains unknown.                          |
+| `NotObserved`   | Probe was not seen before capture ended.                                                                 |
+| `Error`         | Capture setup or execution failed; inspect the log.                                                      |
 
-System list:    C:\temp\system.txt
-Diagnostic log: C:\<user>\<documents>\Log\log_connection-2026-10-03_19-10-00-432.log
-Results CSV:    C:\<user>\<documents>\CSV\results_connection-2026-10-03_19-10-00-432.csv
-```
+Arrival alone does not prove a port is open. Capture outcomes are printed to the console and stored in CSV; standard UDP outcomes should be read from CSV.
 
----
+## Reports and logs
 
-## Usage examples
+| File                                 | Location                               | Purpose                               |
+| ------------------------------------ | -------------------------------------- | ------------------------------------- |
+| `system.txt`                         | `-WorkDirectory`, or `-SystemListPath` | Input system list.                    |
+| `file_cred_<ip>.cred`                | `-WorkDirectory`                       | Optional saved credentials.           |
+| `results_connection-<timestamp>.csv` | `CSV` next to the script               | One result row per ping or port test. |
+| `log_connection-<timestamp>.log`     | `Log` next to the script               | Diagnostic messages.                  |
 
-```powershell
-# TCP to ports 80 and 443 on every system
-.\Test-NetworkConnectivity.ps1 -T TCP -L 80,443
+Output names use `yyyy-MM-dd_HH-mm-ss-fff`, creating separate files for each run. The work, CSV and log directories are created automatically; the CSV is created only when the first result is recorded. `-WorkDirectory` does not relocate CSV/log output.
 
-# TCP in both directions, Windows remote system
-.\Test-NetworkConnectivity.ps1 -T TCP -L 5985 -R 8080 -RemoteOS Windows
+The CSV is semicolon-separated UTF-8:
 
-# UDP with capture on Linux
-.\Test-NetworkConnectivity.ps1 -T UDP -L 161,514 -UdpArrivalCheck
+| Columns                                | Contents                                                             |
+| -------------------------------------- | -------------------------------------------------------------------- |
+| `Timestamp`                            | Time of the result.                                                  |
+| `Direction`                            | `LocalToRemote` or `RemoteToLocal`.                                  |
+| `SourceHostname`, `SourceIP`           | Origin of the probe.                                                 |
+| `DestinationHostname`, `DestinationIP` | Target of the probe.                                                 |
+| `Test`, `Protocol`, `Port`             | `Ping`/`Port`, `ICMP`/`TCP`/`UDP`, and port number (empty for ping). |
+| `Status`, `Details`                    | Outcome and its explanation.                                         |
 
-# Capture with a single credential and passwordless sudo
-.\Test-NetworkConnectivity.ps1 -T UDP -L 161 -UdpArrivalCheck -CaptureSudo -Credential (Get-Credential)
+Log entries use this format:
 
-# System list in a different location
-.\Test-NetworkConnectivity.ps1 -T TCP -L 443 -SystemListPath 'D:\Lists\systems.txt'
+```text
+<TIMESTAMP> [INFO|WARN|ERROR] [<HOSTNAME> (<IP_ADDRESS>)] <MESSAGE>
 ```
 
----
+The log records socket, SSH/WinRM and capture errors, rejected input entries and invalid ports. Use it when CSV details refer to a setup or execution failure.
+
+## Limitations and troubleshooting
+
+- UDP capture requires a Linux IPv4 destination. Windows or IPv6 capture targets produce errors.
+- The capture filter does not restrict source IP; other traffic on the same port can affect interpretation of replies or ICMP refusals.
+- If `tcpdump` starts too slowly, the probe can be sent before capture is ready and produce `NotObserved`.
+- Missing reports can indicate invalid input, no recorded results or output-directory permission problems. Inspect console messages and the log.
 
 ## Example files
 
-The `examples` folder contains sample input and output files, so you can see what the script reads and produces without running it. Hostnames, IPs and timestamps are fictitious.
+The `examples` folder contains sample input and output files, so you can see what the program reads and produces without running it. Hostnames, IPs and timestamps are fictitious.
 
 | File                                                                                                          | Description                                                |
 | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -399,8 +202,6 @@ The `examples` folder contains sample input and output files, so you can see wha
 ```powershell
 .\Test-NetworkConnectivity.ps1 -T TCP -L 80,443 -R 8080 -RemoteOS Linux
 ```
-
-It shows `Open` and `Failed` results, a reverse test through netcat, and a log with a timeout warning and a netcat refusal.
 
 **UDP capture example** (CSV and log `15-10-00-456`):
 
